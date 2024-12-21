@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  estimate_postgres:
+    container_name: estimate_postgres
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=estimate
+    ports:
+      - "5433:5432"
+    volumes:
+      - estimate_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  keycloak_postgres_1:
+    container_name: keycloak_postgres_1
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=keycloak_1
+    ports:
+      - "5432:5432"
+    volumes:
+      - keycloak_postgres_data_1:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  keycloak_1:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak_1
+    environment:
+      - KC_DATABASE=postgres
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://keycloak_postgres_1:5432/keycloak_1
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgres
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+    ports:
+      - "8484:8080"
+    depends_on:
+      - keycloak_postgres_1
+    volumes:
+      - keycloak_data_1:/opt/keycloak/data_1
+      - ./keycloak_export_1:/opt/keycloak_export_1
+    command: start-dev
+    restart: unless-stopped
+
+  estimate-app:
+    image: payk96/estimate:0.0.5
+    container_name: estimate-app
+    ports:
+      - "8081:8081"
+    environment:
+      - KEYCLOAK_PUBLIC_KEY=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlM4AAguoiOaY9QDZFcvTFRN8F7KxaIjGXKlxcgUxNpY3Smx2kuC+Wbp6aqDk/5OrXwLgm7o6Jqy6aYelc7IP4dbCD0642D5wycO456/afrgxnZQ+HOsaQ+d900oSIFaCu41qZ23ncqgvZ4yn325CE/JyQENFcw0RRk9PllmN1cxWMAStSotkn3P2lpizC+8W47Y4Oj57yRhGDTmWzsPtwdvVKjvqSzeApFNuHQsumectbmqEHHGHzA+CXAEjTJRPy+/0oixRpOMQco9Mb0YPzx9XQuV0BgHXLSDvn71btdzBX1zfkvMjNpN9OIFrgy68FIl7gKFAEHYeT+aNvUM8tQIDAQAB
+      - CLIENT_ID=estimate-app
+      - KEYCLOAK_TOKEN_URL=http://keycloak_1:8080/realms/estimate/protocol/openid-connect/token
+      - SPRING_DATASOURCE_ESTIMATE_URL=jdbc:postgresql://estimate_postgres:5432/estimate
+      - SPRING_DATASOURCE_KEYCLOAK_URL=jdbc:postgresql://keycloak_postgres_1:5432/keycloak_1
+      - KEYCLOAK_GENERATE_TOKEN_URL=http://keycloak_1:8080/realms/estimate/protocol/openid-connect/token
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d keycloak_1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - estimate_postgres
+      - keycloak_1
+    restart: unless-stopped
+
+
+  frontend:
+    image: orgylei/estimate-frontend:0.0.1 # Укажите имя образа, если он уже создан
+    container_name: estimate_frontend
+    ports:
+      - "3000:3000" # Пробрасываем порт для доступа
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Для корректной работы live-reload в Docker
+    restart: unless-stopped
+
+
+volumes:
+  keycloak_data_1:
+  keycloak_postgres_data_1:
+  estimate_postgres_data:
